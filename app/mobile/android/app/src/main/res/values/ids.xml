@@ -1,0 +1,8 @@
+<resources>
+    <item name="username" type="id" />
+    <item name="password" type="id" />
+    <item name="login_button" type="id" />
+    <item name="order_row_ORD_1001" type="id" />
+    <item name="pay_order" type="id" />
+    <item name="order_status" type="id" />
+</resources>

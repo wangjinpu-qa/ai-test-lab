@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Test Lab 订单管理</title>
+  <style>
+    :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #182230; background: #f4f7fb; }
+    body { margin: 0; } main { max-width: 920px; margin: 0 auto; padding: 32px 16px; }
+    .card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 5px 20px #12263b12; }
+    h1 { margin-top: 0; } label { display: block; margin: 12px 0 6px; font-weight: 600; }
+    input { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #ccd6e0; border-radius: 6px; }
+    button { border: 0; border-radius: 6px; padding: 10px 16px; cursor: pointer; background: #2563eb; color: white; }
+    button.secondary { background: #475569; } button:disabled { background: #94a3b8; cursor: default; }
+    .hidden { display: none; } .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; } th, td { text-align: left; padding: 10px; border-bottom: 1px solid #e5e7eb; }
+    tr[data-testid="order-row"] { cursor: pointer; } .status { font-weight: 700; } .error { color: #b91c1c; min-height: 1.4em; }
+  </style>
+</head>
+<body>
+<main>
+  <section class="card" id="login-card">
+    <h1>订单管理实验室</h1>
+    <p>本地 AI 自动化测试演示应用</p>
+    <label for="username">用户名</label>
+    <input id="username" aria-label="用户名" value="tester">
+    <label for="password">密码</label>
+    <input id="password" aria-label="密码" type="password" value="test123">
+    <p class="error" id="login-error"></p>
+    <button id="login-button" data-testid="login-button">登录</button>
+  </section>
+
+  <section class="card hidden" id="orders-card">
+    <div class="row">
+      <h1 style="margin-right:auto">我的订单</h1>
+      <button class="secondary" id="logout-button" data-testid="logout-button">退出</button>
+    </div>
+    <div class="row">
+      <input id="keyword" aria-label="订单号" placeholder="输入订单号查询">
+      <button id="query-button" data-testid="query-button">查询</button>
+    </div>
+    <p class="error" id="orders-error"></p>
+    <table>
+      <thead><tr><th>订单号</th><th>商品</th><th>金额</th><th>状态</th></tr></thead>
+      <tbody id="order-table"></tbody>
+    </table>
+  </section>
+
+  <section class="card hidden" id="detail-card">
+    <h1>订单详情</h1>
+    <p>订单号：<strong id="detail-id" data-testid="order-id"></strong></p>
+    <p>商品：<span id="detail-item"></span></p>
+    <p>应付金额：<span id="detail-amount"></span></p>
+    <p>状态：<span id="detail-status" class="status" data-testid="order-status"></span></p>
+    <p class="error" id="detail-error"></p>
+    <div class="row">
+      <button id="pay-button" data-testid="pay-order" aria-label="支付">支付</button>
+      <button id="back-button" class="secondary" data-testid="back-orders">返回订单列表</button>
+    </div>
+  </section>
+</main>
+<script>
+  const state = { token: null, order: null };
+  // Support both the recommended http:// page and a directly opened file:// page.
+  const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:8000' : '';
+  const $ = (id) => document.getElementById(id);
+  async function call(path, options = {}) {
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    if (state.token) headers.Authorization = `Bearer ${state.token}`;
+    const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    const body = await response.json();
+    if (!response.ok) throw Object.assign(new Error(body.message || '请求失败'), { body, response });
+    return body;
+  }
+  function showOrders() {
+    $('login-card').classList.add('hidden'); $('orders-card').classList.remove('hidden'); $('detail-card').classList.add('hidden');
+    loadOrders();
+  }
+  async function loadOrders() {
+    try {
+      const keyword = $('keyword').value;
+      const body = await call(`/api/orders${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ''}`);
+      $('orders-error').textContent = '';
+      $('order-table').innerHTML = body.data.map(order => `
+        <tr data-testid="order-row" data-order-id="${order.id}" tabindex="0">
+          <td>${order.id}</td><td>${order.item}</td><td>¥${Number(order.amount).toFixed(2)}</td>
+          <td>${order.status === 'PAID' ? '已支付' : '待支付'}</td>
+        </tr>`).join('');
+      document.querySelectorAll('[data-order-id]').forEach(row => row.addEventListener('click', () => loadDetail(row.dataset.orderId)));
+    } catch (error) {
+      $('orders-error').textContent = error.message === 'Failed to fetch'
+        ? '无法连接本地服务，请先运行：uvicorn app.main:app --reload'
+        : error.message;
+    }
+  }
+  async function loadDetail(orderId) {
+    try {
+      const body = await call(`/api/orders/${orderId}`); state.order = body.data;
+      $('orders-card').classList.add('hidden'); $('detail-card').classList.remove('hidden'); $('detail-error').textContent = '';
+      $('detail-id').textContent = state.order.id; $('detail-item').textContent = state.order.item;
+      $('detail-amount').textContent = `¥${Number(state.order.amount).toFixed(2)}`;
+      $('detail-status').textContent = state.order.status === 'PAID' ? '已支付' : '待支付';
+      $('pay-button').disabled = state.order.status === 'PAID';
+      $('pay-button').textContent = state.order.status === 'PAID' ? '已支付' : '支付';
+    } catch (error) {
+      $('detail-error').textContent = error.message === 'Failed to fetch'
+        ? '无法连接本地服务，请先运行：uvicorn app.main:app --reload'
+        : error.message;
+    }
+  }
+  $('login-button').addEventListener('click', async () => {
+    try { const body = await call('/api/auth/login', { method: 'POST', body: JSON.stringify({ username: $('username').value, password: $('password').value }) }); state.token = body.data.token; $('login-error').textContent = ''; showOrders(); }
+    catch (error) {
+      $('login-error').textContent = error.message === 'Failed to fetch'
+        ? '无法连接本地服务，请先运行：uvicorn app.main:app --reload'
+        : error.message;
+    }
+  });
+  $('query-button').addEventListener('click', loadOrders);
+  $('logout-button').addEventListener('click', () => { state.token = null; $('orders-card').classList.add('hidden'); $('detail-card').classList.add('hidden'); $('login-card').classList.remove('hidden'); });
+  $('back-button').addEventListener('click', showOrders);
+  $('pay-button').addEventListener('click', async () => {
+    try { await call(`/api/orders/${state.order.id}/pay`, { method: 'POST', body: JSON.stringify({ amount: state.order.amount }) }); await loadDetail(state.order.id); }
+    catch (error) {
+      $('detail-error').textContent = error.message === 'Failed to fetch'
+        ? '无法连接本地服务，请先运行：uvicorn app.main:app --reload'
+        : error.message;
+    }
+  });
+</script>
+</body>
+</html>

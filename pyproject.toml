@@ -1,0 +1,16 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+  "api: API automation tests",
+  "web: Playwright web automation tests",
+  "mobile: Appium mobile automation tests",
+  "ai: AI assistant tests",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
